@@ -1,0 +1,308 @@
+---
+title: "Data Tidying Assignment"
+subtitle: 'Data Tidying and Reporting'
+author: "Mario Fernández Ruiz & David Crespo Acero"
+date: "21/03/2022"
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(comment=NA, warning=FALSE, tidy = T, tidy.opts = list(arrow = T, width.cutoff = 50))
+```
+
+In this assignment we will carry out an analysis of the novel *Dracula*, by Bram Stoker (1897). To do this, we will use the tools provided by $\texttt{quanteda}$ library.
+
+# Preprocessing
+
+```{r eval=FALSE, echo=FALSE}
+install.packages("quanteda")
+install.packages("readtext")
+```
+
+```{r message=FALSE, echo=FALSE}
+library(quanteda)
+library(readtext)
+library(stringi)
+library(ggplot2)
+library("quanteda.textstats")
+library("quanteda.textplots")
+library(pander)
+```
+
+We can load the text from *Dracula* using the **readtext** package, directly from the [Project Gutenberg website](https://www.gutenberg.org/files/345/345-0).
+
+```{r}
+data_char_dracula <- texts(readtext("https://www.gutenberg.org/files/345/345-0.txt"))
+names(data_char_dracula) <- "Dracula"
+```
+
+Next step is to separate actual content from metadata, since the Gutenberg edition of the text contains some metadata before and after the text of the novel.
+
+We can not use the "CHAPTER I" as the beginning of the novel as these words appear previously in the table of contents. Hence, we need to include the next line too, which is "JONATHAN HARKER'S JOURNAL". The last word in the novel is easier to find, it is "sake".
+
+```{r}
+# extract the header information
+(start_v <- stri_locate_first_fixed(data_char_dracula, "CHAPTER I
+
+JONATHAN HARKER'S JOURNAL")[1])
+
+(end_v <- stri_locate_last_fixed(data_char_dracula, "sake.")[1])
+```
+
+Now, we trim the non-book content, extracting the text between the beginning and ending indexes found above:
+
+```{r}
+novel_v <- stri_sub(data_char_dracula, start_v, end_v)
+```
+
+Finally, to make the analysis easier we convert all the text to lower case.
+
+```{r}
+# lowercase text
+novel_lower_v <- char_tolower(novel_v)
+```
+
+# Analysis of occurrence of words related with love or positive feelings.
+
+We can use the function `kwic` to count how many occurrences of these words (and its derivations) are found in the text. The words that were chosen are **love, joy, happy, kiss, pleasure, and passion**.
+
+```{r}
+love<-nrow(kwic(novel_lower_v, pattern = "love*"))
+joy<-nrow(kwic(novel_lower_v, pattern = "joy*"))
+happy<-nrow(kwic(novel_lower_v, pattern = "happy*"))
+kiss<-nrow(kwic(novel_lower_v, pattern = "kiss*"))
+pleasure<-nrow(kwic(novel_lower_v, pattern = "pleasure*"))
+passion<-nrow(kwic(novel_lower_v, pattern = "passion*"))
+```
+
+Then, we can make frequency plots from the previous results.
+
+```{r}
+to_plot <- c(love,joy,happy,kiss,pleasure,passion)
+rank <- c(1,2,3,4,5)
+word <- c("love","joy","happy","kiss","pleasure","passion")
+
+mi_df <- data.frame(
+  "frequency" = to_plot, 
+  "word" = word
+)
+
+library(ggplot2)
+theme_set(theme_minimal())
+  ggplot(mi_df,aes(x = word , y = frequency)) +
+  geom_point() +
+  labs(x = "Term", y = "Term frequency")
+```
+
+As it can be seen, **love** and **happy** are the two "positive feelings"-words that appear the most. It was expected that these words were the most common, as they literally represent the joy-sentiments we were looking for.
+
+# Analysis of frequency of some common words.
+
+First, we will see if these words (personal pronouns mainly) are among the most used in the novel. We use $\texttt{dfm()}$ command to create a matrix of counts of each word type -- a document-frequency matrix.
+
+```{r}
+dracula_dfm <- dfm(novel_lower_v, remove_punct = TRUE)
+word_freq <- textstat_frequency(dracula_dfm, n = 40) 
+word_freq
+```
+
+As we can see, all of them are among the 40 most used words. Then, from this list we will select the personal pronouns.
+
+```{r}
+pronoun_freq <- word_freq[c(3,7,10,13,16,17,19,28,31,32)]
+
+```
+
+Now, we can plot the term frequency for each of these pronouns
+
+```{r fig.width = 8}
+theme_set(theme_minimal())
+pronoun_freq %>% 
+  ggplot(aes(x = feature, y = frequency)) +
+  geom_point() +
+  labs(x = "Term", y = "Term frequency")
+
+```
+
+It is not a surprise that the pronoun I is the most used one as this novel is narrated through a series of first person documents (diary, journal).
+
+Now, we will show the relative frequencies too, so we need to know the total number of tokens. Also, we also create the sorted list of the frequency of the words we are using.
+
+```{r}
+number_token<-ntoken(dracula_dfm)
+number_token
+sorted_dracula_freqs_t <- topfeatures(dracula_dfm, n = nfeat(dracula_dfm))
+sorted_dracula_freqs_t <- sorted_dracula_freqs_t[c("i","he","it","we","his","me","you","her","him","she")]
+```
+
+Thus, relative frequencies for the terms are:
+
+```{r}
+sorted_dracula_rel_freqs_t <- sorted_dracula_freqs_t / number_token * 100
+sorted_dracula_rel_freqs_t["i"]
+```
+
+We plot the relative frequency of the terms.
+
+```{r}
+plot(sorted_dracula_rel_freqs_t[1:10], type = "b",
+     xlab = "Top Ten Words", ylab = "Percentage of Full Text", xaxt = "n")
+axis(1,1:10, labels = names(sorted_dracula_rel_freqs_t[1:10]))
+```
+
+Also, we can use ggplot to get a bar graph, but we need the data in data frame format.
+
+```{r}
+# by weighting the dfm directly
+dracula_dfm_pct <- dfm_weight(dracula_dfm, scheme = "prop") * 100
+
+dracula_dfm_pct <- dfm_select(dracula_dfm_pct, pattern = c("i","he","it","we","his","me","you","her","him","she"))
+```
+
+```{r}
+textstat_frequency(dracula_dfm_pct, n = 10) %>% 
+  ggplot(aes(x = reorder(feature, -rank), y = frequency)) +
+  geom_bar(stat = "identity") + coord_flip() + 
+  labs(x = "", y = "Term Frequency as a Percentage")
+```
+
+# Token distribution analysis
+
+We can use dispersion plots to see the occurrences of different terms throughout the text. We can try with some of the positive feelings related words previously used, for example.
+
+```{r}
+textplot_xray(kwic(novel_lower_v, pattern = "love*"),
+              kwic(novel_lower_v, pattern = "joy*"),
+              kwic(novel_lower_v, pattern = "happy*")) + 
+    ggtitle("Lexical dispersion")
+```
+
+We can observe some curious things. For example, about the 30000 token index, there is a lot of words about love and, coincidentally, some about happy. Apart from that, these words seems to be quite uniformly distributed throughout the novel.
+
+
+# Chapter breaks.
+
+We can also search for the chapter break locations, and thus, divide the book in a collection of documents each one corresponding to a chapter.
+
+```{r}
+chapters_corp <- 
+    corpus(novel_lower_v) %>%
+    corpus_segment(pattern = "chapter\\s.+\n+.*\\n", valuetype = "regex")
+summary(chapters_corp, 10)
+```
+
+Notice that we can extract the titles of the chapters into the `pattern` document variables. To tidy this up, we can remove the trailing **\\n** character, using **stri_trim_right()**.
+
+```{r}
+docvars(chapters_corp, "pattern") <- stringi::stri_trim_right(docvars(chapters_corp, "pattern"))
+summary(chapters_corp, n = 3)
+```
+
+
+# Ocurrence of love-related words by character.
+
+With the corpus split into chapters, we can use the **dfm()** function to create a matrix of counts of each word in each chapter – a document-frequency matrix. Then, as in this novel each chapter is a first person text (fictionally) written by one of the main characters, we can find who wrote the chapters with the most frequency of positive related words. In particular, we will use only the words starting for love.
+
+```{r}
+# create a dfm
+chap_dfm <- dfm(chapters_corp)
+
+# extract row with count for "love" in each chapter
+# and convert to data frame for plotting
+love_happy_df <- chap_dfm %>% 
+    dfm_keep(pattern = "love*") %>% 
+    convert(to = "data.frame")
+    
+love_happy_df$chapter <- 1:nrow(love_happy_df)
+
+ggplot(data = love_happy_df, aes(x = chapter, y = love)) + 
+    geom_bar(stat = "identity") +
+    labs(x = "Chapter", 
+         y = "Frequency",
+         title = 'Occurrence of "love"')
+```
+
+We can also make relative frequency plots, (word count divided by the length of the chapter). To obtain expected word frequency per 100 words, we multiply by 100.
+
+```{r}
+rel_dfm <- dfm_weight(chap_dfm, scheme = "prop") * 100
+
+rel_chap_freq <- rel_dfm %>% 
+    dfm_keep(pattern = 'love*') %>% 
+    convert(to = "data.frame")
+
+rel_chap_freq$chapter <- 1:nrow(rel_chap_freq)
+ggplot(data = rel_chap_freq, aes(x = chapter, y = love)) + 
+    geom_bar(stat = "identity") +
+    labs(x = "Chapter", y = "Relative frequency",
+         title = 'Occurrence of "love"')
+```
+
+As we can see, chapters 5 and 12 are the ones with the most frequency. If we take a deep look at these chapters we find that chapter V is a set of letters from Mina to her beloved friend Lucy and Chapter XII is an extract of Dr. Sewards diary in which he tells the story of how he met Lucy and his feelings on her. Then, we can see that the two chapters with the most frequency are written by Mina and Dr. Sewards, but both of them are about their love to Lucy.
+
+
+# Lexical variety.
+
+To start, we show some important amounts for a novel. These are: number of chapters, number of words by chapter and the mean word frequency by chapter.
+```{r}
+# Length of the book in chapters
+ndoc(chapters_corp)
+
+# Number of words by chapter
+ntoken(chapters_corp) %>% head()
+
+# Mean word frequency by chapter
+(ntoken(chapters_corp) / ntype(chapters_corp)) %>% head()
+```
+
+Now, we show a plot of the mean word frequency (normal and scaled).
+```{r}
+(ntoken(chapters_corp) / ntype(chapters_corp)) %>%
+    plot(type = "h", ylab = "Mean word frequency")
+```
+```{r}
+(ntoken(chapters_corp) / ntype(chapters_corp)) %>%
+    scale() %>%
+    plot(type = "h", ylab = "Scaled mean word frequency")
+```
+
+We can also sort the chapters (starting with the ones with the highest mean word frequency).
+
+```{r}
+mean_word_use_m <- (ntoken(chapters_corp) / ntype(chapters_corp))
+sort(mean_word_use_m, decreasing = TRUE) %>% head()
+```
+Finally in this section we compute the TTR (Type-Token Ratio). TTR is the total number of unique words (types) divided by the total number of words (tokens) in a given chapter.
+```{r}
+ttr <- dfm(chapters_corp) %>% 
+    textstat_lexdiv(measure = "TTR")
+ttr <- ttr[order(ttr$TTR, decreasing = TRUE), ]
+head(ttr,3)
+```
+Then, the chapters with the greatest TTR are chapter VII, XI and I.
+
+# Calculate the Hapax Richness.
+
+Hapax richness is defined as the number of words that occur only once divided by the total number of words. We compute it by chapter and the proportion.
+
+```{r}
+# hapaxes per chapter
+rowSums(chap_dfm == 1) %>% head()
+```
+
+```{r}
+# as a proportion
+hapax_proportion <- rowSums(chap_dfm == 1) / ntoken(chap_dfm)
+head(hapax_proportion)
+```
+
+Finally we show a bar plot with the hapax richness for every chapter.
+
+```{r}
+barplot(hapax_proportion, beside = TRUE, col = "grey", names.arg = seq_len(ndoc(chap_dfm)))
+```
+
+
