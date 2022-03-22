@@ -13,6 +13,8 @@ output:
 knitr::opts_chunk$set(comment=NA, warning=FALSE, tidy = T, tidy.opts = list(arrow = T, width.cutoff = 50))
 ```
 
+First of all we have to mention that .Rmd source code for the document can be found in GitHub: https://github.com/MarioMFR23/Assignment1_Data_Tidying.git.
+
 In this assignment we will carry out an analysis of the novel *Dracula*, by Bram Stoker (1897). To do this, we will use the tools provided by $\texttt{quanteda}$ library.
 
 # Preprocessing
